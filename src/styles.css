@@ -33,6 +33,7 @@ input,textarea{background:var(--card-bg);color:var(--text-main-dark);border-colo
 .privacy{color:#65C3BC!important}
 .submit{background:#E07A5F!important;border-color:#E07A5F!important;color:#fff!important}.submit:hover:not(:disabled){background:#C95B43!important;border-color:#C95B43!important}
 .confirmation h1{color:#65C3BC!important}
+.login-intro h1{color:#65C3BC!important}
 .theme-dark-teal{--bg-deep-teal:#1a2d37;--brand-teal:#084F5C;--card-bg:#ffffff;--text-main-light:#f0f4f8;--text-main-dark:#333333;--accent-coral:#E07A5F;--status-saffron:#F3A712;--status-green:#20936C;--status-red:#C95B43}
 :root{--bg-deep-teal:#1a2d37;--brand-teal:#084F5C;--card-bg:#ffffff;--text-main-light:#f0f4f8;--text-main-dark:#333333;--accent-coral:#E07A5F;--status-saffron:#F3A712;--status-green:#20936C;--status-red:#C95B43;font-family:Inter,Roboto,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text-main-light);background:var(--bg-deep-teal)}html,body,#root{min-height:100%;background:var(--bg-deep-teal)}body{color:var(--text-main-light);background-color:var(--bg-deep-teal);background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:40px 40px}
 /* Optional civic-network SVG layer: add it before the grid when the asset is ready. */
