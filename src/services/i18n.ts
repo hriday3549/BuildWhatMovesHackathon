@@ -165,7 +165,8 @@ export function installPageLanguage(language: 'en' | 'hi') {
       const text = node as Text
       const original = originalText.get(text) ?? text.data
       originalText.set(text, original)
-      text.data = language === 'hi' ? translateValue(original) : original
+      const translated = language === 'hi' ? translateValue(original) : original
+      if (text.data !== translated) text.data = translated
       return
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return
@@ -174,7 +175,11 @@ export function installPageLanguage(language: 'en' | 'hi') {
     const saved = originalAttributes.get(element) ?? {}
     attributes.forEach(attribute => {
       const value = element.getAttribute(attribute)
-      if (value !== null) { saved[attribute] ??= value; element.setAttribute(attribute, language === 'hi' ? translateValue(saved[attribute]) : saved[attribute]) }
+      if (value !== null) {
+        saved[attribute] ??= value
+        const translated = language === 'hi' ? translateValue(saved[attribute]) : saved[attribute]
+        if (value !== translated) element.setAttribute(attribute, translated)
+      }
     })
     originalAttributes.set(element, saved)
     node.childNodes.forEach(update)

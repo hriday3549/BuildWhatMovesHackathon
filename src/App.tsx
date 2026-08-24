@@ -100,9 +100,19 @@ export default function App() {
   }
   function chooseAddress(result: AddressResult) { setDraftLocation({ latitude: result.latitude, longitude: result.longitude, label: result.label }); setConfirmedLocation(null); setAddressResults([]); setLocationMessage('Address selected. Drag the pin or click the map to make it exact, then confirm it.') }
   async function submit() { if (!ready || !routing || !confirmedLocation) return; setSubmitting(true); const result = await createTicket({ complaint: complaint.trim(), location: confirmedLocation, route: routing }); setTicket(result.ticket); setDuplicateMatch(result.duplicateMatch); setSubmitting(false); setView('success') }
-  async function track() { if (!trackId.trim()) return; setTracking(true); setTracked((await getTicket(trackId)) ?? null); setTracking(false) }
-  async function loadCitizenTickets() { setCitizenTickets(await getTickets()) }
-  async function loadOfficerTicket() { if (!officerTicketId.trim()) return; setOfficerTicket((await getOfficerTicket(officerTicketId)) ?? null) }
+  async function track() {
+    if (!trackId.trim()) return
+    setTracking(true)
+    try { setTracked((await getTicket(trackId)) ?? null) } catch { setTracked(null) }
+    finally { setTracking(false) }
+  }
+  async function loadCitizenTickets() {
+    try { setCitizenTickets(await getTickets()) } catch { setCitizenTickets([]) }
+  }
+  async function loadOfficerTicket() {
+    if (!officerTicketId.trim()) return
+    try { setOfficerTicket((await getOfficerTicket(officerTicketId)) ?? null) } catch { setOfficerTicket(null) }
+  }
   async function validateOfficerPhoto(file: File) {
     setOfficerPhoto(null); setOfficerGeo(null); setOfficerCapturedAt(null); setOfficerPhotoName('')
     setOfficerMessage('Checking the photo’s embedded GPS and original capture time…')
@@ -137,10 +147,25 @@ export default function App() {
     const updated = await verifyOfficerUpdate(ticketId, decision)
     if (updated) { setTracked(updated); if (ticket?.id === updated.id) setTicket(updated); if (officerTicket?.id === updated.id) setOfficerTicket(updated) }
   }
-  function enterDemo(role: 'citizen' | 'officer') { setSession(role); setView(role === 'citizen' ? 'track' : 'officer') }
+  function enterDemo(role: 'citizen' | 'officer') {
+    setSession(role)
+    setTracked(null)
+    setOfficerTicket(null)
+    setView(role === 'citizen' ? 'track' : 'officer')
+  }
+  function openReport() {
+    setSession(current => current ?? 'citizen')
+    setTracked(null)
+    setView('report')
+  }
+  function openTrack() {
+    setSession('citizen')
+    setTracked(null)
+    setView('track')
+  }
 
   return <main>
-    <header className="topbar"><button className="brand" onClick={() => setView(session ? 'report' : 'login')}><span className="brand-mark"><ShieldCheck size={21}/></span><span><b>Nivaran</b><small>CPGRAMS, reimagined</small></span></button><div className="header-actions">{session && <span className="identity"><span>{session === 'citizen' ? 'Priya Sharma' : 'Officer Ramesh'}</span><UserRound size={18}/></span>}<button className="officer-link" onClick={() => setLanguage(current => current === 'en' ? 'hi' : 'en')} aria-label="Change language">{language === 'en' ? 'हिंदी' : 'English'}</button><button className="officer-link" onClick={() => setView('insights')}><BarChart3 size={16}/> Insights</button><button className="officer-link" onClick={() => enterDemo('officer')}><UserRound size={16}/> Officer demo</button><button className="track-link" onClick={() => { setSession('citizen'); setView('track') }}><Search size={17}/> {language === 'en' ? 'My complaints' : 'मेरी शिकायतें'}</button></div></header>
+    <header className="topbar"><button className="brand" onClick={() => setView(session ? 'report' : 'login')}><span className="brand-mark"><ShieldCheck size={21}/></span><span><b>Nivaran</b><small>CPGRAMS, reimagined</small></span></button><div className="header-actions">{session && <span className="identity"><span>{session === 'citizen' ? 'Priya Sharma' : 'Officer Ramesh'}</span><UserRound size={18}/></span>}<button className="officer-link" onClick={() => setLanguage(current => current === 'en' ? 'hi' : 'en')} aria-label="Change language">{language === 'en' ? 'हिंदी' : 'English'}</button><button className="officer-link" onClick={() => setView('insights')}><BarChart3 size={16}/> Insights</button><button className="officer-link" onClick={() => enterDemo('officer')}><UserRound size={16}/> Officer demo</button><button className="officer-link" onClick={openReport}><Sparkles size={16}/> Report issue</button><button className="track-link" onClick={openTrack}><Search size={17}/> {language === 'en' ? 'My complaints' : 'मेरी शिकायतें'}</button></div></header>
     {view === 'login' && <section className="shell login-page"><div className="login-intro"><p className="eyebrow"><ShieldCheck size={15}/> A CIVIC RECORD YOU CAN TRUST</p><h1>Get the right person<br/><em>on the case.</em></h1><p className="lead">Nivaran makes public complaints visible, local, and verifiable from the first pin to the final proof.</p></div><section className="login-panel"><span className="login-kicker">DEMO ACCESS</span><h2>Choose your view</h2><p>Use a pre-seeded account to walk through the complete complaint lifecycle.</p><button className="demo-account" onClick={() => enterDemo('citizen')}><span className="account-icon"><UserRound size={20}/></span><span><b>Continue as Priya Sharma</b><small>Citizen · 4 active case records</small></span><ChevronRight size={18}/></button><button className="demo-account" onClick={() => enterDemo('officer')}><span className="account-icon officer"><Camera size={20}/></span><span><b>Continue as Officer Ramesh</b><small>Ward 12 · field completion workspace</small></span><ChevronRight size={18}/></button><div className="mock-otp"><Check size={15}/><span>Demo access uses a mocked OTP. No phone number is required.</span></div></section></section>}
     {view === 'insights' && <Insights tickets={citizenTickets}/>} 
     {view === 'report' && <section className="shell">
