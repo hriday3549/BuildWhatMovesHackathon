@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as exifr from 'exifr'
-import { ArrowRight, Camera, Check, ChevronRight, CircleAlert, Clock3, LocateFixed, MapPin, Mic, Navigation, Search, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, Upload, UserRound } from 'lucide-react'
-import type { Coordinates, Route, Ticket } from './types'
+import { ArrowRight, BarChart3, Camera, Check, ChevronRight, CircleAlert, Clock3, LocateFixed, MapPin, Mic, Navigation, Search, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, Upload, UserRound } from 'lucide-react'
+import type { Coordinates, CreateTicketResult, Route, Ticket } from './types'
 import LocationMap from './components/LocationMap'
+import Insights from './components/Insights'
 import { reverseGeocode, searchAddress, type AddressResult } from './services/location'
 import { routeComplaint } from './services/routing'
-import { addOfficerUpdate, createTicket, getTicket, getTickets, verifyOfficerUpdate } from './services/api'
+import { installPageLanguage } from './services/i18n'
+import { addOfficerUpdate, createTicket, getOfficerTicket, getTicket, getTickets, verifyOfficerUpdate } from './services/api'
 
 const examples = ['The streetlight near my home has not worked for three nights.', 'There is a large pothole outside the bus stop.', 'Water is leaking from the public pipeline.']
 const guidedIssues = {
@@ -18,10 +20,11 @@ const statusProgress: Record<Ticket['status'], number> = { Submitted: 1, Assigne
 const initialMapPoint: Coordinates = { latitude: 28.6139, longitude: 77.2090, label: 'Click the map to drop an issue pin' }
 function formatDate(date: string) { return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(date)) }
 function coordinateLabel(latitude: number, longitude: number) { return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` }
+function formatRemaining(deadline: string) { const seconds = Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000)); const hours = Math.floor(seconds / 3600); const minutes = Math.floor((seconds % 3600) / 60); return `${hours}h ${String(minutes).padStart(2, '0')}m remaining` }
 function fileToDataUrl(file: File) { return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file) }) }
 
 export default function App() {
-  const [view, setView] = useState<'login' | 'report' | 'success' | 'track' | 'officer'>('login')
+  const [view, setView] = useState<'login' | 'report' | 'success' | 'track' | 'officer' | 'insights'>('login')
   const [session, setSession] = useState<'citizen' | 'officer' | null>(null)
   const [complaint, setComplaint] = useState('')
   const [guidedCategory, setGuidedCategory] = useState<keyof typeof guidedIssues | null>(null)
@@ -37,6 +40,7 @@ export default function App() {
   const [routing, setRouting] = useState<Route | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [ticket, setTicket] = useState<Ticket | null>(null)
+  const [duplicateMatch, setDuplicateMatch] = useState<CreateTicketResult['duplicateMatch']>()
   const [trackId, setTrackId] = useState('')
   const [tracked, setTracked] = useState<Ticket | null>(null)
   const [citizenTickets, setCitizenTickets] = useState<Ticket[]>([])
@@ -50,18 +54,23 @@ export default function App() {
   const [officerPhotoName, setOfficerPhotoName] = useState('')
   const [officerMessage, setOfficerMessage] = useState('Choose the original camera photo. It must contain embedded EXIF GPS coordinates and the original capture time.')
   const [officerSaving, setOfficerSaving] = useState(false)
+  const [clock, setClock] = useState(Date.now())
+  const [language, setLanguage] = useState<'en' | 'hi'>('en')
   const autoLocationRequested = useRef(false)
 
   useEffect(() => { setRouting(complaint.trim().length > 8 ? routeComplaint(complaint) : null) }, [complaint])
   useEffect(() => { if (!autoLocationRequested.current) { autoLocationRequested.current = true; requestCurrentLocation(true) } }, [])
   useEffect(() => { if (view === 'track') void loadCitizenTickets() }, [view])
+  useEffect(() => { if (view === 'insights') void loadCitizenTickets() }, [view])
+  useEffect(() => { const timer = window.setInterval(() => setClock(Date.now()), 30000); return () => window.clearInterval(timer) }, [])
+  useEffect(() => installPageLanguage(language), [language])
   const ready = complaint.trim().length > 8 && confirmedLocation && routing
   const progress = useMemo(() => statusProgress[ticket?.status || 'Submitted'], [ticket])
 
   function startVoiceInput() {
     const SpeechRecognition = (window as Window & { webkitSpeechRecognition?: new () => { lang: string; start: () => void; onresult: (event: { results: { 0: { 0: { transcript: string } } } }) => void; onend: () => void; onerror: () => void } }).webkitSpeechRecognition
     if (!SpeechRecognition) { setLocationMessage('Voice input is not supported in this browser. You can type your answer instead.'); return }
-    const recognition = new SpeechRecognition(); recognition.lang = 'en-IN'; setListening(true)
+    const recognition = new SpeechRecognition(); recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN'; setListening(true)
     recognition.onresult = event => { setComplaint(current => `${current}${current ? ' ' : ''}${event.results[0][0].transcript}`); setListening(false) }
     recognition.onend = () => setListening(false); recognition.onerror = () => setListening(false); recognition.start()
   }
@@ -90,10 +99,20 @@ export default function App() {
     finally { setSearchingAddress(false) }
   }
   function chooseAddress(result: AddressResult) { setDraftLocation({ latitude: result.latitude, longitude: result.longitude, label: result.label }); setConfirmedLocation(null); setAddressResults([]); setLocationMessage('Address selected. Drag the pin or click the map to make it exact, then confirm it.') }
-  async function submit() { if (!ready || !routing || !confirmedLocation) return; setSubmitting(true); const result = await createTicket({ complaint: complaint.trim(), location: confirmedLocation, route: routing }); setTicket(result); setSubmitting(false); setView('success') }
-  async function track() { if (!trackId.trim()) return; setTracking(true); setTracked((await getTicket(trackId)) ?? null); setTracking(false) }
-  async function loadCitizenTickets() { setCitizenTickets(await getTickets()) }
-  async function loadOfficerTicket() { if (!officerTicketId.trim()) return; setOfficerTicket((await getTicket(officerTicketId)) ?? null) }
+  async function submit() { if (!ready || !routing || !confirmedLocation) return; setSubmitting(true); const result = await createTicket({ complaint: complaint.trim(), location: confirmedLocation, route: routing }); setTicket(result.ticket); setDuplicateMatch(result.duplicateMatch); setSubmitting(false); setView('success') }
+  async function track() {
+    if (!trackId.trim()) return
+    setTracking(true)
+    try { setTracked((await getTicket(trackId)) ?? null) } catch { setTracked(null) }
+    finally { setTracking(false) }
+  }
+  async function loadCitizenTickets() {
+    try { setCitizenTickets(await getTickets()) } catch { setCitizenTickets([]) }
+  }
+  async function loadOfficerTicket() {
+    if (!officerTicketId.trim()) return
+    try { setOfficerTicket((await getOfficerTicket(officerTicketId)) ?? null) } catch { setOfficerTicket(null) }
+  }
   async function validateOfficerPhoto(file: File) {
     setOfficerPhoto(null); setOfficerGeo(null); setOfficerCapturedAt(null); setOfficerPhotoName('')
     setOfficerMessage('Checking the photo’s embedded GPS and original capture time…')
@@ -128,14 +147,30 @@ export default function App() {
     const updated = await verifyOfficerUpdate(ticketId, decision)
     if (updated) { setTracked(updated); if (ticket?.id === updated.id) setTicket(updated); if (officerTicket?.id === updated.id) setOfficerTicket(updated) }
   }
-  function enterDemo(role: 'citizen' | 'officer') { setSession(role); setView(role === 'citizen' ? 'track' : 'officer') }
+  function enterDemo(role: 'citizen' | 'officer') {
+    setSession(role)
+    setTracked(null)
+    setOfficerTicket(null)
+    setView(role === 'citizen' ? 'track' : 'officer')
+  }
+  function openReport() {
+    setSession(current => current ?? 'citizen')
+    setTracked(null)
+    setView('report')
+  }
+  function openTrack() {
+    setSession('citizen')
+    setTracked(null)
+    setView('track')
+  }
 
   return <main>
-    <header className="topbar"><button className="brand" onClick={() => setView(session ? 'report' : 'login')}><span className="brand-mark"><ShieldCheck size={21}/></span><span><b>Nivaran</b><small>CPGRAMS, reimagined</small></span></button><div className="header-actions">{session && <span className="identity"><span>{session === 'citizen' ? 'Priya Sharma' : 'Officer Ramesh'}</span><UserRound size={18}/></span>}<button className="officer-link" onClick={() => enterDemo('officer')}><UserRound size={16}/> Officer demo</button><button className="track-link" onClick={() => { setSession('citizen'); setView('track') }}><Search size={17}/> My complaints</button></div></header>
-    {view === 'login' && <section className="shell login-page"><div className="login-intro"><p className="eyebrow"><ShieldCheck size={15}/> A CIVIC RECORD YOU CAN TRUST</p><h1>Get the right person<br/><em>on the case.</em></h1><p className="lead">Nivaran makes public complaints visible, local, and verifiable from the first pin to the final proof.</p></div><section className="login-panel"><span className="login-kicker">DEMO ACCESS</span><h2>Choose your view</h2><p>Use a pre-seeded account to walk through the complete complaint lifecycle.</p><button className="demo-account" onClick={() => enterDemo('citizen')}><span className="account-icon"><UserRound size={20}/></span><span><b>Continue as Priya Sharma</b><small>Citizen · 4 active case records</small></span><ChevronRight size={18}/></button><button className="demo-account" onClick={() => enterDemo('officer')}><span className="account-icon officer"><Camera size={20}/></span><span><b>Continue as Officer Ramesh</b><small>Ward 12 · field completion workspace</small></span><ChevronRight size={18}/></button><div className="mock-otp"><Check size={15}/><span>Demo access uses a mocked OTP. No phone number is required.</span></div></section></section>}
-    {view === 'report' && <section className="shell">
-      <div className="hero"><p className="eyebrow"><Sparkles size={15}/> CUT THE RED TAPE</p><h1>Complaints that get finished,<br/><em>not just filed.</em></h1><p>Tell Nivaran what happened. We route it to the right ward team, show the evidence, and keep the outcome in your hands.</p></div>
-      <div className="steps" aria-label="Complaint process"><Step n="1" label="Tell us" active/><Step n="2" label="Confirm location" active={!!confirmedLocation}/><Step n="3" label="Route issue" active={!!routing}/><Step n="4" label="Track action"/></div>
+    <header className="topbar"><button className="brand" onClick={() => setView(session ? 'report' : 'login')}><span className="brand-mark"><ShieldCheck size={21}/></span><span><b>Nivaran</b><small>CPGRAMS, reimagined</small></span></button><div className="header-actions">{session && <span className="identity"><span>{session === 'citizen' ? 'Priya Sharma' : 'Officer Ramesh'}</span><UserRound size={18}/></span>}<button className="officer-link" onClick={() => setLanguage(current => current === 'en' ? 'hi' : 'en')} aria-label="Change language">{language === 'en' ? 'हिंदी' : 'English'}</button><button className="officer-link" onClick={() => setView('insights')}><BarChart3 size={16}/> Insights</button><button className="officer-link" onClick={() => enterDemo('officer')}><UserRound size={16}/> Officer demo</button><button className="officer-link" onClick={openReport}><Sparkles size={16}/> Report issue</button><button className="track-link" onClick={openTrack}><Search size={17}/> {language === 'en' ? 'My complaints' : 'मेरी शिकायतें'}</button></div></header>
+    {view === 'login' && <section className="login-page"><section className="login-panel login-panel--intro" aria-labelledby="login-intro-heading"><span className="hero-badge">Nivaran · CPGRAMS 2.0</span><h1 id="login-intro-heading">Two people,<br/><em>one proof loop.</em></h1><ol className="login-journey"><li><span>1</span><p>Pick who you are</p></li><li><span>2</span><p>File or manage a real grievance</p></li><li><span>3</span><p>Watch it get resolved end-to-end</p></li></ol></section><section className="login-panel login-panel--form" aria-labelledby="login-form-heading"><div className="login-form-content"><p className="eyebrow">DEMO ACCESS</p><h2 id="login-form-heading">Choose your role</h2><p className="login-lede">Use a pre-seeded account to walk through the complete complaint lifecycle.</p><div className="role-grid"><button className="role-card" type="button" onClick={() => enterDemo('citizen')}><span className="role-icon"><UserRound size={25}/></span><span className="role-name">Priya Sharma</span><span className="role-type">Citizen</span><span className="role-description">File and track grievances.</span></button><button className="role-card" type="button" onClick={() => enterDemo('officer')}><span className="role-icon"><Camera size={25}/></span><span className="role-name">Officer Ramesh</span><span className="role-type">Officer</span><span className="role-description">Investigate and resolve assigned tickets.</span></button></div><div className="login-reassurance"><Check size={20}/><span>Demo access uses a pre-seeded account. No phone number is required.</span></div></div></section></section>}
+    {view === 'insights' && <Insights tickets={citizenTickets}/>} 
+    {view === 'report' && <section className="shell complaint-page">
+      <header className="complaint-header"><p className="eyebrow"><Sparkles size={15}/> {language === 'en' ? 'NEW COMPLAINT' : 'नई शिकायत'}</p><h1>{language === 'en' ? <>Tell us what needs fixing,<br/><em>and where.</em></> : <>बताएं क्या ठीक करना है,<br/><em>और कहां।</em></>}</h1><p>{language === 'en' ? 'We will guide your report to the right local authority and keep the outcome visible.' : 'हम आपकी शिकायत सही स्थानीय प्राधिकरण तक पहुंचाएंगे और परिणाम दिखाते रहेंगे।'}</p></header>
+      <div className="steps stepper" aria-label="Complaint process"><Step n="1" label="Category & details" active/><Step n="2" label="Location" active={!!confirmedLocation}/><Step n="3" label="Routing" active={!!routing}/><Step n="4" label="Review & submit"/></div>
       <div className="grid"><section className="card report-card">
         <div className="section-title"><span className="num">1</span><div><h2>Tell us what happened</h2><p>A few quick choices help us send this to the right desk.</p></div></div>
         <div className="guided-panel"><span className="guided-label">NIVARAN INTAKE</span><strong>Which kind of civic issue is this?</strong><div className="guided-choices">{(Object.keys(guidedIssues) as Array<keyof typeof guidedIssues>).map(category => <button className={guidedCategory === category ? 'selected' : ''} key={category} onClick={() => setGuidedCategory(category)}>{category}</button>)}</div>{guidedCategory && <><strong className="guided-followup">What best describes it?</strong><div className="guided-choices issue-choices">{guidedIssues[guidedCategory].map(issue => <button key={issue} onClick={() => chooseGuidedIssue(issue)}>{issue}</button>)}</div></>}</div>
@@ -151,13 +186,13 @@ export default function App() {
         <button className="submit" disabled={!ready || submitting} onClick={submit}>{submitting ? 'Creating ticket…' : !confirmedLocation ? 'Confirm location to continue' : 'Submit complaint'}<ArrowRight size={19}/></button><p className="privacy"><ShieldCheck size={15}/> The pin and address are sent only after you confirm them.</p>
       </aside></div>
     </section>}
-    {view === 'success' && ticket && <section className="shell confirmation"><div className="success-icon"><Check size={34}/></div><p className="eyebrow">COMPLAINT REGISTERED</p><h1>You’re all set.</h1><p className="lead">Your issue is now with the right team. We’ll keep the record and escalation path visible to you.</p><div className="ticket-box"><span>YOUR TICKET NUMBER</span><strong>{ticket.id}</strong><button onClick={() => { setTrackId(ticket.id); setView('track') }}>View live status <ChevronRight size={17}/></button></div><Timeline ticket={ticket} progress={progress}/><div className="confirmation-actions"><button className="officer-action" onClick={() => { setOfficerTicketId(ticket.id); setOfficerTicket(ticket); setView('officer') }}><Camera size={16}/> Open officer completion demo</button><button className="secondary" onClick={() => { setComplaint(''); setDraftLocation(null); setConfirmedLocation(null); setTicket(null); setView('report') }}>Report another issue</button></div></section>}
-    {view === 'track' && <section className="shell tracking"><p className="eyebrow">PRIYA SHARMA · CITIZEN VIEW</p><h1>Your complaints</h1><p className="lead">Every case has a visible owner, next step, and proof before it can be closed.</p><div className="case-list">{citizenTickets.map(caseTicket => <button className="case-item" key={caseTicket.id} onClick={() => { setTrackId(caseTicket.id); setTracked(caseTicket) }}><span className={'case-status ' + caseTicket.status.toLowerCase().replace(/ /g, '-')} /> <span className="case-copy"><strong>{caseTicket.complaint}</strong><small>{caseTicket.id} · {caseTicket.route.team}</small></span><span className="case-state">{caseTicket.status}{caseTicket.status === 'Pending verification' && <b>Review evidence</b>}</span><ChevronRight size={17}/></button>)}</div><div className="track-form"><input value={trackId} onChange={e => setTrackId(e.target.value)} onKeyDown={e => e.key === 'Enter' && track()} placeholder="Enter a ticket number"/><button onClick={track} disabled={tracking}>{tracking ? 'Checking…' : 'Find ticket'}</button></div>{tracked ? <><div className="status-card"><span className="status-dot"/><div><small>CURRENT STATUS</small><strong>{tracked.status}</strong><p>{tracked.route.department} · {tracked.route.team}</p></div><MapPin size={22}/></div><OfficerEvidence ticket={tracked}/>{tracked.status === 'Pending verification' && <CitizenVerification ticket={tracked} onVerify={verify}/>}<Timeline ticket={tracked} progress={statusProgress[tracked.status]}/></> : trackId && !tracking ? <p className="not-found">We couldn’t find that ticket on this device. Check the number and try again.</p> : null}</section>}
+    {view === 'success' && ticket && <section className="shell confirmation confirmation-page"><section className="confirmation-card" aria-labelledby="confirmation-heading"><div className="success-icon"><Check size={34}/></div><p className="eyebrow">COMPLAINT REGISTERED</p><h1 id="confirmation-heading">You’re all set.</h1><p className="lead">Your issue is now with the right team. We’ll keep the record and escalation path visible to you.</p>{duplicateMatch && <div className="community-match"><Sparkles size={21}/><div><strong>AI found a community complaint</strong><p>{duplicateMatch.nearbyCount} residents reported a similar {ticket.route.category.toLowerCase()} issue within {duplicateMatch.distanceMetres} metres. Your report joined parent ticket <b>{duplicateMatch.parentId}</b>.</p><span>One shared case gives the ward team one clear place to act.</span></div></div>}<div className="ticket-box"><span>YOUR TICKET NUMBER</span><strong>{ticket.id}</strong><button onClick={() => { setTrackId(ticket.id); setView('track') }}>View live status <ChevronRight size={17}/></button></div><Timeline ticket={ticket} progress={progress}/><div className="confirmation-actions"><button className="officer-action" onClick={async () => { const parentId = duplicateMatch?.parentId ?? ticket.id; setOfficerTicketId(parentId); setOfficerTicket((await getOfficerTicket(parentId)) ?? null); setView('officer') }}><Camera size={16}/> Open officer completion demo</button><button className="secondary" onClick={() => { setComplaint(''); setDraftLocation(null); setConfirmedLocation(null); setTicket(null); setDuplicateMatch(undefined); setView('report') }}>Report another issue</button></div></section></section>}
+    {view === 'track' && <section className="shell tracking dashboard-page"><header className="dashboard-header"><div><p className="eyebrow">PRIYA SHARMA · CITIZEN VIEW</p><h1>Your complaints</h1><p className="lead">Every case has a visible owner, next step, and proof before it can be closed.</p></div><button className="submit dashboard-new-complaint" onClick={openReport}><Sparkles size={16}/> New complaint</button></header><div className="case-list">{citizenTickets.map(caseTicket => <button className="case-item" key={caseTicket.id} onClick={() => { setTrackId(caseTicket.id); setTracked(caseTicket) }}><span className={'case-status ' + caseTicket.status.toLowerCase().replace(/ /g, '-')} /> <span className="case-copy"><strong>{caseTicket.complaint}</strong><small>{caseTicket.id} · {caseTicket.route.team}</small></span><span className="case-state">{caseTicket.status}{caseTicket.status === 'Pending verification' && <b>Review evidence</b>}</span><ChevronRight size={17}/></button>)}</div><div className="track-form"><input value={trackId} onChange={e => setTrackId(e.target.value)} onKeyDown={e => e.key === 'Enter' && track()} placeholder="Enter a ticket number"/><button onClick={track} disabled={tracking}>{tracking ? 'Checking…' : 'Find ticket'}</button></div>{tracked ? <><div className="status-card"><span className="status-dot"/><div><small>CURRENT STATUS</small><strong>{tracked.status}</strong><p>{tracked.route.department} · {tracked.route.team}</p></div><MapPin size={22}/></div><OfficerEvidence ticket={tracked}/>{tracked.status === 'Pending verification' && <CitizenVerification ticket={tracked} onVerify={verify}/>}<Timeline ticket={tracked} progress={statusProgress[tracked.status]}/></> : trackId && !tracking ? <p className="not-found">We couldn’t find that ticket on this device. Check the number and try again.</p> : null}</section>}
     {view === 'officer' && <section className="shell officer-page"><p className="eyebrow"><UserRound size={15}/> DEMONSTRATION OFFICER WORKSPACE</p><h1>Close the loop with evidence.</h1><p className="lead">Only original camera images with embedded GPS and the original capture time can be sent to the citizen.</p><div className="officer-flow"><span>Officer</span><ArrowRight size={15}/><span>Geotagged photo</span><ArrowRight size={15}/><span>Citizen verification</span><ArrowRight size={15}/><span>Accept / Reject</span></div><section className="card officer-card"><div className="ticket-lookup"><div><label htmlFor="officer-ticket">Complaint ticket number</label><input id="officer-ticket" value={officerTicketId} onChange={e => setOfficerTicketId(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadOfficerTicket()} placeholder="SCG-2026-123456"/></div><button onClick={loadOfficerTicket}>Open ticket</button></div>{officerTicket ? <><div className="officer-ticket-summary"><span className="status-dot"/><div><small>ASSIGNED TICKET</small><strong>{officerTicket.id}</strong><p>{officerTicket.complaint}</p></div><span>{officerTicket.route.department}</span></div>{officerTicket.officerUpdate ? <div className="officer-sent"><Check size={19}/><span>This ticket already has a field update. It is currently <b>{officerTicket.status.toLowerCase()}</b>.</span></div> : <div className="evidence-grid"><label className={officerPhoto ? 'photo-drop has-photo' : 'photo-drop'}><input type="file" accept="image/*" capture="environment" onChange={async e => { const file = e.target.files?.[0]; if (file) await validateOfficerPhoto(file) }}/>{officerPhoto ? <img src={officerPhoto} alt="Officer completion evidence"/> : <><Upload size={26}/><strong>Capture original photo</strong><span>GPS and original capture time must be embedded in the image metadata.</span></>}</label><div className="officer-meta"><div className={officerGeo && officerCapturedAt ? 'geo-proof captured' : 'geo-proof'}><LocateFixed size={19}/><div><b>{officerGeo && officerCapturedAt ? 'EXIF GPS + capture time verified' : 'EXIF GPS + capture time required'}</b><span>{officerGeo && officerCapturedAt ? `${coordinateLabel(officerGeo.latitude, officerGeo.longitude)} · Taken ${formatDate(officerCapturedAt)}` : officerMessage}</span></div>{officerGeo && officerCapturedAt ? <Check size={17}/> : null}</div><p className="metadata-rule">Screenshots, edited images, and forwarded copies without original EXIF GPS and time are rejected.</p><label className="work-note">Completion note<textarea value={officerNote} onChange={e => setOfficerNote(e.target.value)} maxLength={500}/></label><button className="send-update" disabled={!officerPhoto || !officerGeo || !officerCapturedAt || !officerNote.trim() || officerSaving} onClick={saveOfficerUpdate}>{officerSaving ? 'Sending update…' : 'Send for citizen verification'}<ArrowRight size={17}/></button></div></div>}</> : <div className="empty-officer"><Camera size={26}/><span>Enter a ticket number to add a field completion update.</span></div>}</section></section>}
-    <footer><span>© Nivaran · CPGRAMS, reimagined</span><span>Complaints that get finished, not just filed.</span></footer>
+    {view === 'officer' && officerTicket?.communityComplaint && <div className="community-banner"><Sparkles size={18}/><span><b>COMMUNITY COMPLAINT</b> · {officerTicket.communityCount} reports grouped under this parent ticket. All field action is recorded here.</span></div>}{view === 'track' && tracked && <div className="sla-banner"><Clock3 size={18}/><span><b>{tracked.status === 'Escalated' ? 'SLA EXCEEDED' : 'SLA COUNTDOWN'}</b> · {tracked.status === 'Escalated' ? `Escalated to ${tracked.currentAuthority ?? 'the next authority'}` : `${formatRemaining(tracked.escalationAt)} before automatic escalation`}</span></div>}<footer><span>© Nivaran · CPGRAMS, reimagined</span><span>Complaints that get finished, not just filed.</span></footer>
   </main>
 }
-function Step({ n, label, active = false }: { n: string; label: string; active?: boolean }) { return <div className={active ? 'step active' : 'step'}><span>{active ? <Check size={13}/> : n}</span>{label}</div> }
+function Step({ n, label, active = false }: { n: string; label: string; active?: boolean }) { return <div className={active ? 'stepper-step stepper-step--active' : 'stepper-step'}><span className="stepper-number">{active ? <Check size={13}/> : n}</span><span>{label}</span></div> }
 function Timeline({ ticket, progress }: { ticket: Ticket; progress: number }) { return <section className="timeline card"><div className="timeline-head"><div><small>CASE PROGRESS</small><h2>{ticket.status}</h2></div><span>Filed {formatDate(ticket.createdAt)}</span></div>{ticket.timeline.map((x, i) => <div className={'event ' + (i + 1 <= progress ? 'current' : '')} key={x.label}><span className="event-dot">{i + 1 < progress ? <Check size={12}/> : i + 1 === progress ? <Clock3 size={13}/> : null}</span><div><strong>{x.label}</strong><p>{x.detail}</p></div><time>{formatDate(x.time)}</time></div>)}</section> }
 function OfficerEvidence({ ticket }: { ticket: Ticket }) {
   if (!ticket.officerUpdate) return null
