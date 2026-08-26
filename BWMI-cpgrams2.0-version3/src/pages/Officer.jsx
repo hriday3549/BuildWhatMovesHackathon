@@ -1,15 +1,56 @@
 import { Camera, Check, LocateFixed, UploadCloud } from 'lucide-react'
 import * as exifr from 'exifr'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Button from '../components/Button'
 import Card from '../components/Card'
-import { addOfficerUpdate, getOfficerTicket } from '../services/api'
+import { addOfficerUpdate, getOfficerTicket, getOfficerTickets } from '../services/api'
 
 function fileToDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file) }) }
+
 export default function Officer() {
-  const [id, setId] = useState(''); const [ticket, setTicket] = useState(null); const [photo, setPhoto] = useState(null); const [geo, setGeo] = useState(null); const [capturedAt, setCapturedAt] = useState(null); const [fileName, setFileName] = useState(''); const [note, setNote] = useState('Work completed. Site was inspected and the issue has been addressed.'); const [message, setMessage] = useState('Choose the original camera photo. It must contain embedded EXIF GPS coordinates and the original capture time.'); const [saving, setSaving] = useState(false)
-  async function openTicket() { setTicket(await getOfficerTicket(id)) }
-  async function validate(file) { setPhoto(null); setGeo(null); setCapturedAt(null); setMessage('Checking embedded GPS and original capture time...'); const metadata = await exifr.parse(file, { gps: true, exif: true, tiff: true, reviveValues: true }); const date = metadata?.DateTimeOriginal instanceof Date ? metadata.DateTimeOriginal : metadata?.DateTimeOriginal ? new Date(metadata.DateTimeOriginal) : null; if (typeof metadata?.latitude !== 'number' || typeof metadata?.longitude !== 'number' || !date || Number.isNaN(date.getTime())) { setMessage('Photo rejected: embedded EXIF GPS and original capture time are required.'); return }; setPhoto(await fileToDataUrl(file)); setGeo({ latitude: metadata.latitude, longitude: metadata.longitude, label: 'Embedded EXIF GPS coordinates' }); setCapturedAt(date.toISOString()); setFileName(file.name); setMessage('Metadata verified. This original photo is ready to send.') }
-  async function submit() { if (!ticket || !photo || !geo || !capturedAt || !note.trim()) return; setSaving(true); const updated = await addOfficerUpdate(ticket.id, { officerName: 'Demo Field Officer · Ward 12', note: note.trim(), photoDataUrl: photo, location: geo, capturedAt, originalFileName: fileName }); setTicket(updated); setSaving(false); setMessage('Update sent. The citizen can now accept or reject the completion.') }
-  return <main className="officer-page"><header className="officer-header"><div><p className="eyebrow">Officer queue</p><h1>Assigned to Ramesh</h1><p>Only original camera images with embedded GPS and the original capture time can be sent to the citizen.</p></div></header><section className="ticket-section"><h2>Open field tickets</h2><Card className="officer-card"><div className="ticket-lookup"><label htmlFor="officer-ticket">Complaint ticket number</label><input id="officer-ticket" value={id} onChange={event => setId(event.target.value)} placeholder="SCG-2026-123456" /><Button onClick={openTicket}>Open ticket</Button></div>{ticket ? <><div className="officer-ticket-summary"><strong>{ticket.id}</strong><span>{ticket.route.department}</span><p>{ticket.complaint}</p></div>{ticket.officerUpdate ? <p><Check size={18} /> This ticket already has a field update and is {ticket.status.toLowerCase()}.</p> : <div className="evidence-grid"><label className="photo-drop"><input type="file" accept="image/*" capture="environment" onChange={event => event.target.files?.[0] && validate(event.target.files[0])} />{photo ? <img src={photo} alt="Officer completion evidence" /> : <><Camera size={26} /><strong>Capture original photo</strong><span>GPS and original capture time are required.</span></>}</label><div className="officer-meta"><div className="geo-proof"><LocateFixed size={18} /><span>{geo ? `${geo.latitude.toFixed(6)}, ${geo.longitude.toFixed(6)}` : 'EXIF GPS not verified'}</span></div><label className="work-note">Completion note<textarea value={note} onChange={event => setNote(event.target.value)} rows="4" /></label><p>{message}</p><Button variant="success" disabled={!photo || !geo || !capturedAt || saving} onClick={submit}><UploadCloud size={17} /> {saving ? 'Sending update...' : 'Send for citizen verification'}</Button></div></div>}</> : <p>Open a ticket to review its field completion requirements.</p>}</Card></section></main>
+  const [id, setId] = useState('')
+  const [ticket, setTicket] = useState(null)
+  const [assignedTickets, setAssignedTickets] = useState([])
+  const [photo, setPhoto] = useState(null)
+  const [geo, setGeo] = useState(null)
+  const [capturedAt, setCapturedAt] = useState(null)
+  const [fileName, setFileName] = useState('')
+  const [note, setNote] = useState('Work completed. Site was inspected and the issue has been addressed.')
+  const [message, setMessage] = useState('Choose the original camera photo. It must contain embedded EXIF GPS coordinates and the original capture time.')
+  const [saving, setSaving] = useState(false)
+
+  const refreshAssignedTickets = () => getOfficerTickets().then(setAssignedTickets).catch(() => setAssignedTickets([]))
+  useEffect(() => { refreshAssignedTickets() }, [])
+
+  async function openTicket(ticketId = id) {
+    const selected = await getOfficerTicket(ticketId)
+    setTicket(selected || null)
+    if (selected) setId(selected.id)
+  }
+
+  async function validate(file) {
+    setPhoto(null); setGeo(null); setCapturedAt(null); setMessage('Checking embedded GPS and original capture time...')
+    const metadata = await exifr.parse(file, { gps: true, exif: true, tiff: true, reviveValues: true })
+    const date = metadata?.DateTimeOriginal instanceof Date ? metadata.DateTimeOriginal : metadata?.DateTimeOriginal ? new Date(metadata.DateTimeOriginal) : null
+    if (typeof metadata?.latitude !== 'number' || typeof metadata?.longitude !== 'number' || !date || Number.isNaN(date.getTime())) { setMessage('Photo rejected: embedded EXIF GPS and original capture time are required.'); return }
+    setPhoto(await fileToDataUrl(file)); setGeo({ latitude: metadata.latitude, longitude: metadata.longitude, label: 'Embedded EXIF GPS coordinates' }); setCapturedAt(date.toISOString()); setFileName(file.name); setMessage('Metadata verified. This original photo is ready to send.')
+  }
+
+  async function submit() {
+    if (!ticket || !photo || !geo || !capturedAt || !note.trim()) return
+    setSaving(true)
+    const updated = await addOfficerUpdate(ticket.id, { officerName: 'Demo Field Officer · Ward 12', note: note.trim(), photoDataUrl: photo, location: geo, capturedAt, originalFileName: fileName })
+    setTicket(updated); setSaving(false); setMessage('Update sent. The citizen can now accept or reject the completion.'); refreshAssignedTickets()
+  }
+
+  return <main className="officer-page">
+    <header className="officer-header"><div><p className="eyebrow">Officer queue</p><h1>Assigned to Ramesh</h1><p>All complaints assigned to this ward are listed below. Select one to open it and submit field proof.</p></div></header>
+    <section className="ticket-section"><h2>Assigned complaints</h2>
+      {assignedTickets.length ? <div className="officer-assigned-list">{assignedTickets.map(assignedTicket => <Card className="officer-assigned-ticket" key={assignedTicket.id}><div><strong>{assignedTicket.id}</strong><p>{assignedTicket.complaint}</p><span>{assignedTicket.route.department} · {assignedTicket.status}</span></div><Button variant="secondary" onClick={() => openTicket(assignedTicket.id)}>Open ticket</Button></Card>)}</div> : <Card className="officer-card"><p>No complaints are currently assigned to this ward.</p></Card>}
+    </section>
+    <section className="ticket-section"><h2>Open field ticket</h2><Card className="officer-card">
+      <div className="ticket-lookup"><label htmlFor="officer-ticket">Complaint ticket number</label><input id="officer-ticket" value={id} onChange={event => setId(event.target.value)} placeholder="SCG-2026-123456" /><Button onClick={() => openTicket()}>Open ticket</Button></div>
+      {ticket ? <><div className="officer-ticket-summary"><strong>{ticket.id}</strong><span>{ticket.route.department}</span><p>{ticket.complaint}</p></div>{ticket.officerUpdate ? <p><Check size={18} /> This ticket already has a field update and is {ticket.status.toLowerCase()}.</p> : <div className="evidence-grid"><label className="photo-drop"><input type="file" accept="image/*" capture="environment" onChange={event => event.target.files?.[0] && validate(event.target.files[0])} />{photo ? <img src={photo} alt="Officer completion evidence" /> : <><Camera size={26} /><strong>Capture original photo</strong><span>GPS and original capture time are required.</span></>}</label><div className="officer-meta"><div className="geo-proof"><LocateFixed size={18} /><span>{geo ? `${geo.latitude.toFixed(6)}, ${geo.longitude.toFixed(6)}` : 'EXIF GPS not verified'}</span></div><label className="work-note">Completion note<textarea value={note} onChange={event => setNote(event.target.value)} rows="4" /></label><p>{message}</p><Button variant="success" disabled={!photo || !geo || !capturedAt || saving} onClick={submit}><UploadCloud size={17} /> {saving ? 'Sending update...' : 'Send for citizen verification'}</Button></div></div>}</> : <p>Choose an assigned complaint above, or enter its ticket number to open it.</p>}
+    </Card></section>
+  </main>
 }

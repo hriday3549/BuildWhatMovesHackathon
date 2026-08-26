@@ -295,6 +295,13 @@ a { color: inherit; text-decoration: none; }
 .proof-actions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
 .proof-actions .button { width: 100%; min-height: 48px; }
 .ticket-confirmation-message { grid-column: 1 / -1; margin: 0; padding: .9rem 1rem; border: 1px solid color-mix(in srgb, var(--nivaran-stamp-green) 35%, transparent); border-radius: 6px; color: var(--nivaran-stamp-green); background: color-mix(in srgb, var(--nivaran-stamp-green) 8%, transparent); font-weight: 600; }
+.ticket-history { display: grid; gap: .75rem; margin-top: 1.25rem; padding: clamp(1.25rem, 3vw, 1.75rem); }
+.ticket-history h2 { margin: 0 0 .35rem; color: var(--nivaran-ink-blue); font-family: 'IBM Plex Serif', serif; font-size: 1.55rem; }
+.history-row { display: grid; grid-template-columns: minmax(150px, .8fr) minmax(0, 1.5fr) auto; align-items: start; gap: .5rem 1rem; padding: .9rem 0; border-top: 1px solid color-mix(in srgb, var(--nivaran-ink-blue) 14%, transparent); }
+.history-row > span { color: var(--nivaran-ink-blue); font-size: .88rem; font-weight: 700; line-height: 1.45; }
+.history-row small { color: var(--nivaran-ink-gray); font-size: .8rem; line-height: 1.5; }
+.history-row time { color: var(--nivaran-ink-gray); font-family: 'IBM Plex Mono', monospace; font-size: .7rem; line-height: 1.4; text-align: right; white-space: nowrap; }
+.voice-preview { margin: .6rem 0 0; color: var(--nivaran-ink-gray); font-size: .8rem; font-style: italic; line-height: 1.45; }
 .reopen-form { grid-column: 1 / -1; display: grid; gap: .8rem; padding-top: .25rem; }
 .reopen-note-label { color: var(--nivaran-ink-gray); font-size: .8rem; font-weight: 600; }
 .reopen-form textarea { width: 100%; resize: vertical; min-height: 110px; padding: .85rem .9rem; border: 1px solid color-mix(in srgb, var(--nivaran-ink-blue) 28%, transparent); border-radius: 6px; color: var(--nivaran-ink-blue); background: color-mix(in srgb, var(--nivaran-ledger-paper) 85%, white); line-height: 1.5; }
@@ -338,6 +345,12 @@ a { color: inherit; text-decoration: none; }
 .officer-page .officer-header > div > p:last-child { max-width: 620px; color: var(--nivaran-ink-gray); line-height: 1.6; }
 .officer-page .ticket-section > h2 { color: var(--nivaran-ink-blue); font-family: 'IBM Plex Serif', serif; }
 .officer-page .officer-card { padding: clamp(1.25rem, 3vw, 2rem); }
+.officer-assigned-list { display: grid; gap: .75rem; margin-bottom: 2rem; }
+.officer-assigned-ticket { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.15rem; }
+.officer-assigned-ticket > div { min-width: 0; }
+.officer-assigned-ticket strong { color: var(--nivaran-ink-blue); font: 700 .88rem 'IBM Plex Mono', monospace; }
+.officer-assigned-ticket p { margin: .4rem 0; color: var(--nivaran-ink-blue); line-height: 1.45; }
+.officer-assigned-ticket span { color: var(--nivaran-ink-gray); font-size: .75rem; }
 .officer-page .ticket-lookup { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .75rem; padding: 1rem; border: 1px solid color-mix(in srgb, var(--nivaran-ink-blue) 16%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--nivaran-ink-blue) 4%, var(--nivaran-ledger-paper)); }
 .officer-page .ticket-lookup label { grid-column: 1 / -1; color: var(--nivaran-ink-blue); font-family: 'IBM Plex Serif', serif; font-size: 1rem; font-weight: 700; }
 .officer-page .ticket-lookup input { min-height: 48px; padding: .7rem .8rem; border: 1px solid color-mix(in srgb, var(--nivaran-ink-blue) 38%, transparent); border-radius: 5px; color: var(--nivaran-ink-blue); background: var(--nivaran-ledger-paper); font: 500 .95rem 'IBM Plex Mono', monospace; letter-spacing: .03em; }
@@ -364,6 +377,7 @@ a { color: inherit; text-decoration: none; }
 .officer-page .officer-meta .button { width: 100%; gap: .45rem; }
 .officer-page .officer-card > p { display: flex; align-items: center; gap: .5rem; margin: 1rem 0 0; padding: .85rem; color: var(--nivaran-stamp-green); background: color-mix(in srgb, var(--nivaran-stamp-green) 8%, var(--nivaran-ledger-paper)); line-height: 1.5; }
 @media (max-width: 700px) { .officer-page .evidence-grid { grid-template-columns: 1fr; } .officer-page .photo-drop { min-height: 190px; } .officer-page .officer-ticket-summary span { font-size: .62rem; } }
+@media (max-width: 700px) { .officer-assigned-ticket { align-items: stretch; flex-direction: column; } .officer-assigned-ticket .button { width: 100%; } .history-row { grid-template-columns: 1fr; gap: .25rem; } .history-row time { text-align: left; white-space: normal; } }
 .insights-page { width: min(100% - 2rem, 1120px); margin: 0 auto; padding: clamp(2.5rem, 6vw, 5rem) 0; }
 .insights-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.25rem; }
 .insights-heading h1 { margin: .65rem 0 .75rem; color: var(--nivaran-ink-blue); font-family: 'IBM Plex Serif', serif; font-size: clamp(2.4rem, 5vw, 3.6rem); line-height: 1.05; }
