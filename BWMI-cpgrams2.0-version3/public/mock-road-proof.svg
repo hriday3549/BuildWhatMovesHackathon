@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 112" role="img" aria-label="Mock repair proof illustration">
+  <rect width="160" height="112" fill="#DCE7DB"/>
+  <path d="M0 76 52 59l108 8v45H0Z" fill="#7D8D9A"/>
+  <path d="m67 71 23-3 10 7-15 9-22-3Z" fill="#B8863B"/>
+  <path d="m68 70 20-2 10 7-15 7-20-3Z" fill="#9AA9B0"/>
+  <path d="M0 91h160" stroke="#F1F5EE" stroke-width="3" stroke-dasharray="10 8"/>
+  <circle cx="132" cy="31" r="15" fill="#2F7A4F"/>
+  <path d="m125 31 5 5 9-11" fill="none" stroke="#F1F5EE" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
